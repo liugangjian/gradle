@@ -81,8 +81,6 @@ class ApplyPluginIntegSpec extends AbstractIntegrationSpec {
 
     @Issue("GRADLE-3068")
     def "can use gradleApi in test"() {
-        requireGradleDistribution()
-
         given:
         file("src/test/groovy/org/acme/ProjectBuilderTest.groovy") << """
             package org.acme
@@ -114,7 +112,6 @@ class ApplyPluginIntegSpec extends AbstractIntegrationSpec {
     }
 
     def "generated Gradle API JAR in custom Gradle user home is reused across multiple invocations"() {
-        requireGradleDistribution()
         requireOwnGradleUserHomeDir()
 
         given:

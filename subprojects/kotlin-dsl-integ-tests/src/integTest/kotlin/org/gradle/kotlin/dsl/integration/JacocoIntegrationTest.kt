@@ -14,8 +14,6 @@ class JacocoIntegrationTest : AbstractPluginIntegrationTest() {
     @ToBeFixedForInstantExecution
     fun `jacoco ignore codegen`() {
 
-        requireGradleDistributionOnEmbeddedExecuter()
-
         withBuildScript("""
             plugins {
                 `kotlin-dsl`
