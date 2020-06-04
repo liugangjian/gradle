@@ -18,6 +18,7 @@ package org.gradle.internal.watch.registry.impl;
 
 import com.google.common.collect.HashMultiset;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Multiset;
 import com.google.common.collect.Multisets;
 import net.rubygrapefruit.platform.file.FileWatcher;
@@ -42,6 +43,7 @@ public class HierarchicalFileWatcherUpdater implements FileWatcherUpdater {
     private final Multiset<Path> shouldWatchDirectories = HashMultiset.create();
     private final Set<Path> watchedRoots = new HashSet<>();
     private final Map<Path, String> projectRootDirectories = new HashMap<>();
+    private final Map<Path, String> oldProjectRootDirectories = new HashMap<>();
     private final FileWatcher watcher;
 
     public HierarchicalFileWatcherUpdater(FileWatcher watcher) {
@@ -68,27 +70,54 @@ public class HierarchicalFileWatcherUpdater implements FileWatcherUpdater {
             .map(File::toPath)
             .map(Path::toAbsolutePath)
             .collect(Collectors.toSet());
-        projectRootDirectories.clear();
-        for (Path rootPathToWatch : WatchRootUtil.resolveRootsToWatch(rootPaths)) {
-            projectRootDirectories.put(rootPathToWatch, rootPathToWatch.toString() + File.separator);
-        }
-        LOGGER.info("Now considering {} as root directories to watch", projectRootDirectories.keySet());
+        Set<Path> newProjectRootDirectories = WatchRootUtil.resolveRootsToWatch(rootPaths);
+        LOGGER.info("Now considering {} as root directories to watch", newProjectRootDirectories);
+
+        projectRootDirectories.keySet().removeAll(newProjectRootDirectories);
+        oldProjectRootDirectories.keySet().removeAll(newProjectRootDirectories);
+
+        Set<Path> updatedOldProjectRootDirectories = WatchRootUtil.resolveRootsToWatch(ImmutableSet.<Path>builder()
+            .addAll(projectRootDirectories.keySet())
+            .addAll(oldProjectRootDirectories.keySet())
+            .build());
+
+        addProjectRootDirectoryWithPrefix(updatedOldProjectRootDirectories, oldProjectRootDirectories);
+        addProjectRootDirectoryWithPrefix(newProjectRootDirectories, projectRootDirectories);
+
         updateWatchedDirectories();
+    }
+
+    private void addProjectRootDirectoryWithPrefix(Set<Path> projectRootDirectories, Map<Path, String> targetMap) {
+        targetMap.clear();
+        projectRootDirectories.forEach(
+            oldProjectRootDirectory -> targetMap.put(oldProjectRootDirectory, oldProjectRootDirectory.toString() + File.separator)
+        );
     }
 
     private void updateWatchedDirectories() {
         Set<Path> directoriesToWatch = new HashSet<>();
         shouldWatchDirectories.elementSet().forEach(shouldWatchDirectory -> {
-            for (Map.Entry<Path, String> entry : projectRootDirectories.entrySet()) {
-                if (shouldWatchDirectory.toString().startsWith(entry.getValue())) {
-                    directoriesToWatch.add(entry.getKey());
-                    return;
-                }
+            if (maybeWatchProjectRootDirectory(directoriesToWatch, shouldWatchDirectory, projectRootDirectories)) {
+                return;
+            }
+            if (maybeWatchProjectRootDirectory(directoriesToWatch, shouldWatchDirectory, oldProjectRootDirectories)) {
+                return;
             }
             directoriesToWatch.add(shouldWatchDirectory);
         });
+        oldProjectRootDirectories.keySet().retainAll(directoriesToWatch);
 
         updateWatchedDirectories(WatchRootUtil.resolveRootsToWatch(directoriesToWatch));
+    }
+
+    private boolean maybeWatchProjectRootDirectory(Set<Path> directoriesToWatch, Path shouldWatchDirectory, Map<Path, String> projectRootDirectories) {
+        for (Map.Entry<Path, String> entry : projectRootDirectories.entrySet()) {
+            if (shouldWatchDirectory.toString().startsWith(entry.getValue())) {
+                directoriesToWatch.add(entry.getKey());
+                return true;
+            }
+        }
+        return false;
     }
 
     private void updateWatchedDirectories(Set<Path> newWatchRoots) {
